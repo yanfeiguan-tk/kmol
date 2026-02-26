@@ -32,6 +32,10 @@ uv pip install \
     torch-geometric==2.3.0 \
     -f https://data.pyg.org/whl/torch-1.13.1+cu117.html
 
+# Install numpy and cython for packages that need them at build time
+echo "Installing build dependencies..."
+uv pip install "numpy==1.24.4" "cython==0.29.33"
+
 # Install other dependencies
 echo "Installing project dependencies..."
 uv pip install -e .
