@@ -1,0 +1,89 @@
+{
+    "model": {
+        "type": "graph_convolutional",
+        "in_features": 45,
+        "out_features": 1,
+        "edge_features": 12,
+        "hidden_features": 960,
+        "dropout": 0.1,
+        "layer_type": "torch_geometric.nn.GENConv",
+        "layers_count": 4,
+        "molecule_features": 17,
+        "is_residual": 1,
+        "norm_layer": "kmol.model.layers.BatchNorm"
+    },
+    "loader": {
+        "type": "csv",
+        "input_path": "input.csv",
+        "input_column_names": [
+            "smiles_standardized"
+        ],
+        "target_column_names": [
+            "pIC50"
+        ]
+    },
+    "splitter": {
+        "type": "index",
+        "splits": {
+            "train": 0.8, 
+            "validation": 0.1,
+            "test": 0.1
+        }
+    },
+    "featurizers": [
+        {
+            "type": "graph",
+            "inputs": [
+                "smiles_standardized"
+            ],
+            "outputs": [
+                "graph"
+            ],
+            "descriptor_calculator": {
+                "type": "rdkit"
+            },
+            "rewrite": false
+        }
+    ],
+    "transformers": [],
+    "optimizer": {
+        "type": "torch.optim.AdamW",
+        "lr": 2.3e-05,
+        "weight_decay": 0.00056
+    },
+    "criterion": {
+        "type": "torch.nn.SmoothL1Loss"
+    },
+    "scheduler": {
+        "type": "torch.optim.lr_scheduler.OneCycleLR",
+        "max_lr": 0.001,
+        "epochs": 200,
+        "pct_start": 0.3,
+        "div_factor": 25,
+        "final_div_factor": 1000
+    },
+    "output_path": "0_admeclean",
+    "checkpoint_path": null,
+    "train_metrics": [
+        "r2",
+        "mae",
+        "rmse"
+    ],
+    "epochs": 100,
+    "batch_size": 128,
+    "num_workers": 2,
+    "featurization_jobs": 2,
+    "preprocessor": {
+        "type": "cache"
+    },
+    "use_cuda": true,
+    "enabled_gpus": [
+        0
+    ],
+    "cache_location": "cache/",
+    "clear_cache": true,
+    "log_level": "debug",
+    "log_format": "",
+    "log_frequency": 1,
+    "target_metric": "r2"
+}
