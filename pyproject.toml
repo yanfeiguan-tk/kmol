@@ -11,9 +11,9 @@ authors = [
 
 dependencies = [
     # Core ML/DL
-    "torch==1.13.1",
-    "torchvision==0.14.1",
-    "torchaudio==0.13.1",
+    "torch==1.13.1+cu117",
+    "torchvision==0.14.1+cu117",
+    "torchaudio==0.13.1+cu117",
     "numpy==1.24.4",
     
     # PyTorch Geometric and extensions
@@ -98,3 +98,4 @@ target-version = ["py39"]
 [tool.uv]
 index-url = "https://download.pytorch.org/whl/cu117"
 extra-index-url = ["https://pypi.org/simple"]
+index-strategy = "unsafe-first-match"
