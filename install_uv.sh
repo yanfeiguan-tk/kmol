@@ -22,6 +22,10 @@ echo "Installing PyTorch with CUDA 11.7..."
 uv pip install torch==1.13.1+cu117 torchvision==0.14.1+cu117 torchaudio==0.13.1 \
     --index-url https://download.pytorch.org/whl/cu117
 
+# Install build dependencies for PyG extensions
+echo "Installing build dependencies..."
+uv pip install setuptools wheel ninja
+
 # Install PyTorch Geometric dependencies
 echo "Installing PyTorch Geometric extensions..."
 uv pip install torch-scatter torch-sparse torch-cluster torch-spline-conv torch-geometric \
