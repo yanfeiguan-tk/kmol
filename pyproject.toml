@@ -58,7 +58,7 @@ dependencies = [
     # gRPC
     "grpcio==1.54.2",
     "grpcio-tools==1.54.2",
-    "protobuf==3.21.12",
+    "protobuf>=4.21.6,<5.0",
     
     # Build requirements
     "cython==0.29.33",
