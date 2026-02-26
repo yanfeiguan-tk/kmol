@@ -25,7 +25,8 @@ uv pip install torch==1.13.1+cu117 torchvision==0.14.1+cu117 torchaudio==0.13.1 
 # Install PyTorch Geometric dependencies
 echo "Installing PyTorch Geometric extensions..."
 uv pip install torch-scatter torch-sparse torch-cluster torch-spline-conv torch-geometric \
-    -f https://data.pyg.org/whl/torch-1.13.1+cu117.html
+    -f https://data.pyg.org/whl/torch-1.13.1+cu117.html \
+    --no-build-isolation
 
 # Install other dependencies
 echo "Installing project dependencies..."
