@@ -5,6 +5,8 @@ from .evidential_losses import (
     edl_classification,
     edl_classification_masked,
     edl_regression,
+    censored_mse_loss,
+    censored_gaussian_nll,
 )
 
 from kmol.core.observers import (
@@ -184,3 +186,138 @@ class PaddedLoss(torch.nn.Module):
         loss = loss.view_as(mask) * mask
         loss = loss.sum() / mask.sum()
         return loss
+
+
+class CensoredMSELoss(torch.nn.Module):
+    """
+    Censored Mean Squared Error Loss for regression with boundary data.
+    
+    Handles left-censored, right-censored, and uncensored observations.
+    Expects censoring information to be provided in the forward pass.
+    
+    Config example:
+    "criterion": {
+        "type": "kmol.model.criterions.CensoredMSELoss"
+    }
+    
+    Data format:
+    - Labels should be (N, 2) where:
+      - labels[:, 0] = target values (or censoring thresholds)
+      - labels[:, 1] = censoring indicator (0=uncensored, -1=left-censored, 1=right-censored)
+    """
+    
+    def __init__(self):
+        super().__init__()
+    
+    def forward(self, predictions: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            predictions: Model predictions (N, 1) or (N,)
+            labels: Labels with censoring info (N, 2)
+                - labels[:, 0] = target values
+                - labels[:, 1] = censoring indicator
+        """
+        predictions = predictions.view(-1)
+        targets = labels[:, 0].view(-1)
+        censoring_indicator = labels[:, 1].view(-1)
+        
+        return censored_mse_loss(predictions, targets, censoring_indicator, reduce=True)
+
+
+class CensoredGaussianNLLLoss(torch.nn.Module):
+    """
+    Censored Gaussian Negative Log-Likelihood Loss (Tobit regression).
+    
+    Models censored data assuming Gaussian distribution. More statistically principled
+    than CensoredMSELoss for handling detection limits and boundary values.
+    
+    Config example:
+    "criterion": {
+        "type": "kmol.model.criterions.CensoredGaussianNLLLoss",
+        "learnable_variance": true
+    }
+    
+    Data format:
+    - Labels should be (N, 2) where:
+      - labels[:, 0] = target values (or censoring thresholds)
+      - labels[:, 1] = censoring indicator (0=uncensored, -1=left-censored, 1=right-censored)
+    """
+    
+    def __init__(self, learnable_variance: bool = False, initial_log_var: float = 0.0):
+        """
+        Args:
+            learnable_variance: If True, variance is a learnable parameter
+            initial_log_var: Initial value for log variance
+        """
+        super().__init__()
+        self.learnable_variance = learnable_variance
+        
+        if learnable_variance:
+            self.log_var = torch.nn.Parameter(torch.tensor(initial_log_var))
+        else:
+            self.register_buffer('log_var', torch.tensor(initial_log_var))
+    
+    def forward(self, predictions: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            predictions: Model predictions (N, 1) or (N,)
+            labels: Labels with censoring info (N, 2)
+                - labels[:, 0] = target values
+                - labels[:, 1] = censoring indicator
+        """
+        predictions = predictions.view(-1)
+        targets = labels[:, 0].view(-1)
+        censoring_indicator = labels[:, 1].view(-1)
+        
+        # Expand log_var to match batch size
+        log_var = self.log_var.expand_as(predictions) if self.learnable_variance else None
+        
+        return censored_gaussian_nll(predictions, targets, censoring_indicator, log_var=log_var, reduce=True)
+
+
+class MaskedCensoredGaussianNLLLoss(torch.nn.Module):
+    """
+    Masked version of CensoredGaussianNLLLoss that handles NaN values.
+    
+    Combines masking for missing data with censored likelihood for boundary data.
+    
+    Config example:
+    "criterion": {
+        "type": "kmol.model.criterions.MaskedCensoredGaussianNLLLoss",
+        "learnable_variance": true
+    }
+    
+    Data format:
+    - Labels should be (N, 2) where:
+      - labels[:, 0] = target values (or censoring thresholds, NaN for missing)
+      - labels[:, 1] = censoring indicator (0=uncensored, -1=left-censored, 1=right-censored, NaN for missing)
+    """
+    
+    def __init__(self, learnable_variance: bool = False, initial_log_var: float = 0.0):
+        super().__init__()
+        self.learnable_variance = learnable_variance
+        
+        if learnable_variance:
+            self.log_var = torch.nn.Parameter(torch.tensor(initial_log_var))
+        else:
+            self.register_buffer('log_var', torch.tensor(initial_log_var))
+    
+    def forward(self, predictions: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
+        predictions = predictions.view(-1)
+        targets = labels[:, 0].view(-1)
+        censoring_indicator = labels[:, 1].view(-1)
+        
+        # Create mask for non-NaN values
+        mask = ~torch.isnan(targets)
+        
+        if mask.sum() == 0:
+            return torch.tensor(0.0, device=predictions.device)
+        
+        # Filter out NaN values
+        predictions_masked = predictions[mask]
+        targets_masked = targets[mask]
+        censoring_masked = censoring_indicator[mask]
+        
+        log_var = self.log_var.expand_as(predictions_masked) if self.learnable_variance else None
+        
+        return censored_gaussian_nll(predictions_masked, targets_masked, censoring_masked, log_var=log_var, reduce=True)

@@ -95,6 +95,64 @@ class CustomMetrics:
 
         return 1 - np.sum(np.abs(ground_truth - predictions)) / worst_possible_outcome
 
+    @staticmethod
+    def censored_mae(ground_truth: np.ndarray, predictions: np.ndarray, censoring: np.ndarray) -> float:
+        """
+        Mean Absolute Error for censored data.
+        
+        Only computes MAE on uncensored observations (censoring == 0).
+        For censored observations, we cannot compute true error since we don't know the true value.
+        
+        Args:
+            ground_truth: Array of shape (n,) with observed values or censoring thresholds
+            predictions: Array of shape (n,) with predicted values
+            censoring: Array of shape (n,) with censoring indicators:
+                       0 = uncensored, -1 = left-censored, 1 = right-censored
+        
+        Returns:
+            MAE computed only on uncensored observations
+        """
+        # Extract uncensored observations
+        uncensored_mask = (censoring == 0)
+        
+        if not np.any(uncensored_mask):
+            # No uncensored data, return NaN
+            return np.nan
+        
+        uncensored_true = ground_truth[uncensored_mask]
+        uncensored_pred = predictions[uncensored_mask]
+        
+        return mean_absolute_error(uncensored_true, uncensored_pred)
+
+    @staticmethod
+    def censored_r2(ground_truth: np.ndarray, predictions: np.ndarray, censoring: np.ndarray) -> float:
+        """
+        R-squared for censored data.
+        
+        Only computes R2 on uncensored observations (censoring == 0).
+        For censored observations, we cannot compute true error since we don't know the true value.
+        
+        Args:
+            ground_truth: Array of shape (n,) with observed values or censoring thresholds
+            predictions: Array of shape (n,) with predicted values  
+            censoring: Array of shape (n,) with censoring indicators:
+                       0 = uncensored, -1 = left-censored, 1 = right-censored
+        
+        Returns:
+            R2 computed only on uncensored observations
+        """
+        # Extract uncensored observations
+        uncensored_mask = (censoring == 0)
+        
+        if not np.any(uncensored_mask):
+            # No uncensored data, return NaN
+            return np.nan
+        
+        uncensored_true = ground_truth[uncensored_mask]
+        uncensored_pred = predictions[uncensored_mask]
+        
+        return r2_score(uncensored_true, uncensored_pred)
+
 
 class AvailableMetrics:
     # fmt: off
@@ -109,6 +167,8 @@ class AvailableMetrics:
     CHEBYSHEV = MetricConfiguration(type=MetricType.REGRESSION, calculator=distance.chebyshev, maximize=False)
     MANHATTAN = MetricConfiguration(type=MetricType.REGRESSION, calculator=distance.cityblock, maximize=False)
     RANK_QUALITY = MetricConfiguration(type=MetricType.REGRESSION, calculator=CustomMetrics.rank_quality)
+    CENSORED_MAE = MetricConfiguration(type=MetricType.REGRESSION, calculator=CustomMetrics.censored_mae, maximize=False)
+    CENSORED_R2 = MetricConfiguration(type=MetricType.REGRESSION, calculator=CustomMetrics.censored_r2)
 
     ROC_AUC = MetricConfiguration(type=MetricType.CLASSIFICATION, calculator=roc_auc_score)
     PR_AUC = MetricConfiguration(type=MetricType.CLASSIFICATION, calculator=average_precision_score)
@@ -139,6 +199,10 @@ class PredictionProcessor:
 
     def _map_metrics(self, metrics: List[str]) -> Dict[str, MetricConfiguration]:
         return {metric: getattr(AvailableMetrics, metric.upper()) for metric in metrics}
+
+    def _is_censored_metric(self, metric_name: str) -> bool:
+        \"\"\"Check if a metric requires censoring information.\"\"\"
+        return metric_name.upper().startswith('CENSORED_')
 
     def _needs_predictions(self) -> bool:
         return any(metric.uses_threshold for metric in self._metrics.values())
@@ -172,15 +236,30 @@ class PredictionProcessor:
 
     def _prepare(
         self, ground_truth: List[torch.Tensor], logits: List[torch.Tensor]
-    ) -> Tuple[List[List[float]], List[List[float]], Optional[List[List[float]]]]:
+    ) -> Tuple[List[List[float]], List[List[float]], Optional[List[List[float]]], Optional[List[List[float]]]]:
         logits = torch.cat(logits)
         ground_truth = torch.cat(ground_truth)
         payload = Namespace(logits=logits, ground_truth=ground_truth)
         EventManager.dispatch_event(event_name="before_metric", payload=payload)
 
+        # Check if we have censored metrics that need censoring indicators
+        has_censored_metrics = any(self._is_censored_metric(name) for name in self._metrics.keys())
+        
+        # For censored data: ground_truth has shape (batch, 2) where
+        # ground_truth[:, 0] = observed value/threshold
+        # ground_truth[:, 1] = censoring indicator (0=uncensored, -1=left, 1=right)
+        censoring_indicators = None
+        if has_censored_metrics and payload.ground_truth.shape[1] >= 2:
+            # Extract censoring indicators from second column
+            censoring_indicators = payload.ground_truth[:, 1:2]
+            # Keep only the first column as ground truth values
+            payload.ground_truth = payload.ground_truth[:, 0:1]
+        
         # Transpose tensors
         ground_truth = payload.ground_truth.t()
         logits = payload.logits.t()
+        if censoring_indicators is not None:
+            censoring_indicators = censoring_indicators.t()
 
         # move values to CPU, get predictions from logits if needed
         ground_truth = self.detach(ground_truth)
@@ -188,6 +267,8 @@ class PredictionProcessor:
         if self._needs_predictions():
             predictions = self.apply_threshold(logits, self._threshold).tolist()
         logits = self.detach(logits)
+        if censoring_indicators is not None:
+            censoring_indicators = self.detach(censoring_indicators)
 
         # remove missing labels
         mask = np.isnan(ground_truth)
@@ -197,13 +278,16 @@ class PredictionProcessor:
 
             if predictions:
                 predictions[i] = np.delete(predictions[i], mask[i])
+            
+            if censoring_indicators is not None and i < len(censoring_indicators):
+                censoring_indicators[i] = np.delete(censoring_indicators[i], mask[i])
 
-        return ground_truth, logits, predictions
+        return ground_truth, logits, predictions, censoring_indicators
 
     def compute_metrics(self, ground_truth: List[torch.Tensor], logits: List[torch.Tensor]) -> Namespace:
         metrics = defaultdict(list)
         if self._metrics:
-            ground_truth, logits, predictions = self._prepare(ground_truth=ground_truth, logits=logits)
+            ground_truth, logits, predictions, censoring_indicators = self._prepare(ground_truth=ground_truth, logits=logits)
 
             for target_index in range(len(ground_truth)):
                 for metric_name, metric_settings in self._metrics.items():
@@ -215,10 +299,20 @@ class PredictionProcessor:
                         labels = logits[target_index]
 
                     try:
-                        computed_value = metric_settings.calculator(ground_truth[target_index], labels)
+                        # Check if this is a censored metric that needs censoring indicators
+                        if self._is_censored_metric(metric_name) and censoring_indicators is not None:
+                            # Pass censoring indicators as third argument
+                            computed_value = metric_settings.calculator(
+                                ground_truth[target_index], 
+                                labels,
+                                censoring_indicators[target_index]
+                            )
+                        else:
+                            computed_value = metric_settings.calculator(ground_truth[target_index], labels)
+                        
                         if not metric_settings.maximize:
                             computed_value *= -1
-                    except ValueError:
+                    except (ValueError, IndexError) as e:
                         computed_value = self._error_value
 
                     metrics[metric_name].append(computed_value)

@@ -147,3 +147,114 @@ def edl_regression(evidential_output, y_true, coeff=1.0, **kwargs):
     loss_reg = nig_reg(targets, gamma, safe_v, safe_alpha, safe_beta)
 
     return loss_nll + coeff * loss_reg
+
+
+def censored_mse_loss(predictions, targets, censoring_indicator, reduce=True):
+    """
+    Censored Mean Squared Error Loss for boundary data.
+    
+    Args:
+        predictions: Model predictions (N,)
+        targets: Target values, where censored values represent the censoring threshold (N,)
+        censoring_indicator: Indicator for censoring type (N,)
+            0 = uncensored (exact value)
+            -1 = left-censored (value <= target)
+            1 = right-censored (value >= target)
+        reduce: Whether to return mean loss or per-sample loss
+    
+    Returns:
+        Loss value
+    """
+    # Uncensored observations: use standard MSE
+    uncensored_mask = censoring_indicator == 0
+    uncensored_loss = torch.where(
+        uncensored_mask,
+        (predictions - targets) ** 2,
+        torch.zeros_like(predictions)
+    )
+    
+    # Left-censored: penalize if prediction > threshold
+    left_censored_mask = censoring_indicator == -1
+    left_censored_loss = torch.where(
+        left_censored_mask & (predictions > targets),
+        (predictions - targets) ** 2,
+        torch.zeros_like(predictions)
+    )
+    
+    # Right-censored: penalize if prediction < threshold
+    right_censored_mask = censoring_indicator == 1
+    right_censored_loss = torch.where(
+        right_censored_mask & (predictions < targets),
+        (predictions - targets) ** 2,
+        torch.zeros_like(predictions)
+    )
+    
+    total_loss = uncensored_loss + left_censored_loss + right_censored_loss
+    
+    return torch.mean(total_loss) if reduce else total_loss
+
+
+def censored_gaussian_nll(predictions, targets, censoring_indicator, log_var=None, reduce=True, eps=1e-6):
+    """
+    Censored Gaussian Negative Log-Likelihood Loss (Tobit-style).
+    Assumes Gaussian distribution with mean=prediction and variance=exp(log_var).
+    
+    Args:
+        predictions: Model predictions for mean (N,) or (N, 1)
+        targets: Target values (censoring thresholds for censored data) (N,) or (N, 1)
+        censoring_indicator: Censoring type (N,) or (N, 1)
+            0 = uncensored
+            -1 = left-censored
+            1 = right-censored
+        log_var: Log variance, can be learned parameter or fixed. If None, assumed to be 0 (variance=1)
+        reduce: Whether to return mean loss
+        eps: Small constant for numerical stability
+    
+    Returns:
+        Negative log-likelihood
+    """
+    # Flatten inputs
+    predictions = predictions.view(-1)
+    targets = targets.view(-1)
+    censoring_indicator = censoring_indicator.view(-1)
+    
+    # Set variance
+    if log_var is None:
+        var = torch.ones_like(predictions)
+        log_var = torch.zeros_like(predictions)
+    else:
+        log_var = log_var.view(-1)
+        var = torch.exp(log_var).clamp(min=eps)
+    
+    std = torch.sqrt(var)
+    
+    # For uncensored observations: standard Gaussian NLL
+    uncensored_mask = censoring_indicator == 0
+    gaussian_nll = 0.5 * log_var + 0.5 * ((predictions - targets) ** 2) / var
+    uncensored_loss = torch.where(uncensored_mask, gaussian_nll, torch.zeros_like(gaussian_nll))
+    
+    # For left-censored: log(CDF(threshold))
+    # CDF = Phi((threshold - prediction) / std)
+    left_censored_mask = censoring_indicator == -1
+    z_left = (targets - predictions) / (std + eps)
+    # Use log_cdf for numerical stability
+    left_censored_loss = torch.where(
+        left_censored_mask,
+        -torch.distributions.Normal(0, 1).log_prob(z_left) + torch.log(std + eps) - torch.log(
+            torch.distributions.Normal(0, 1).cdf(z_left) + eps
+        ),
+        torch.zeros_like(gaussian_nll)
+    )
+    
+    # For right-censored: log(1 - CDF(threshold)) = log(survival function)
+    right_censored_mask = censoring_indicator == 1
+    z_right = (targets - predictions) / (std + eps)
+    right_censored_loss = torch.where(
+        right_censored_mask,
+        -torch.log(1 - torch.distributions.Normal(0, 1).cdf(z_right) + eps),
+        torch.zeros_like(gaussian_nll)
+    )
+    
+    total_loss = uncensored_loss + left_censored_loss + right_censored_loss
+    
+    return torch.mean(total_loss) if reduce else total_loss

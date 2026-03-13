@@ -427,7 +427,7 @@ class Executor(AbstractExecutor):
             label = labels[i] if len(labels) else i
             results[label] = results["predictions"][:, i]
             columns.append(label)
-            if len(labels):
+            # Add probability column
                 results[f"{label}_ground_truth"] = results["labels"][:, i]
                 columns.append(f"{label}_ground_truth")
             if "variance" in results:
