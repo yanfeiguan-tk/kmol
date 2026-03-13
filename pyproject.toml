@@ -1,105 +1,11 @@
-[project]
-name = "kmol"
-version = "1.1.9.3"
-description = "A Machine Learning Library for Drug Discovery and Life Sciences, with Federated Learning Capabilities"
-readme = "README.md"
-requires-python = "==3.9.17"
-license = {file = "LICENSE.txt"}
-authors = [
-    {name = "Elix Inc.", email = "romeo.cozac@elix-inc.com"}
-]
-
-dependencies = [
-    # Core ML/DL
-    "torch==1.13.1+cu117",
-    "torchvision==0.14.1+cu117",
-    "torchaudio==0.13.1+cu117",
-    "numpy==1.24.4",
-    
-    # PyTorch Geometric and extensions
-    "torch-geometric==2.3.0",
-    "torch-cluster==1.6.0",
-    "torch-scatter==2.1.1",
-    "torch-sparse==0.6.16",
-    "torch-spline-conv==1.2.2",
-    
-    # Chemistry/Molecular
-    "rdkit==2022.9.4",
-    "openbabel-wheel==3.1.1.18",
-    "biopandas==0.4.1",
-    "MDAnalysis",
-    "proDy",
-    "biopython==1.81",
-    "mordred==1.2.0",
-    
-    # ML utilities
-    "scikit-learn==1.2.1",
-    "optuna==2.4.0",
-    "captum==0.5.0",
-    "torch-lr-finder==0.2.1",
-    
-    # Data processing
-    "pandas==1.5.2",
-    "openpyxl==3.1.1",
-    "networkx==2.5.1",
-    "dask==2023.4.0",
-    "distributed==2023.4.0",
-    
-    # Utilities
-    "rich==12.6.0",
-    "pyhumps==1.6.1",
-    "requests==2.26.0",
-    "disklist==0.4.0",
-    "filelock==3.12.4",
-    "boxsdk[jwt]==3.6.1",
-    "cairosvg==2.5.2",
-    "dm-tree==0.1.6",
-    
-    # gRPC
-    "grpcio==1.54.2",
-    "grpcio-tools==1.54.2",
-    "protobuf>=4.21.6,<5.0",
-    
-    # Build requirements
-    "cython==0.29.33",
-    "typing-extensions==4.3.0",
-    
-    # DeepSpeed for Openfold
-    "deepspeed==0.5.10",
-    "ml-collections==0.1.0",
-]
-
-[project.optional-dependencies]
-dev = [
-    "pytest==8.3.3",
-    "black",
-]
-
 [build-system]
 requires = [
-    "setuptools>=67.6.1",
-    "wheel>=0.40.0",
-    "cython>=0.29.33",
-    "numpy>=1.24.4",
-    "torch>=1.13.1",
+  "setuptools~=67.6.1",
+  "wheel~=0.40.0",
+  "pip~=23.0.1",
 ]
 build-backend = "setuptools.build_meta"
-
-[tool.setuptools]
-packages = {find = {where = ["src"]}}
-
-[tool.setuptools.package-dir]
-"" = "src"
 
 [tool.black]
 line-length = 128
 target-version = ["py39"]
-
-[tool.uv]
-index-url = "https://download.pytorch.org/whl/cu117"
-extra-index-url = ["https://pypi.org/simple"]
-index-strategy = "unsafe-first-match"
-
-[tool.uv.extra-build-dependencies]
-prody = ["numpy>=1.24.4,<2.0", "cython>=0.29.33"]
-mdanalysis = ["numpy>=1.24.4,<2.0", "cython>=0.29.33"]
