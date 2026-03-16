@@ -428,6 +428,7 @@ class Executor(AbstractExecutor):
             results[label] = results["predictions"][:, i]
             columns.append(label)
             # Add probability column
+            if len(labels):
                 results[f"{label}_ground_truth"] = results["labels"][:, i]
                 columns.append(f"{label}_ground_truth")
             if "variance" in results:
