@@ -201,7 +201,7 @@ class PredictionProcessor:
         return {metric: getattr(AvailableMetrics, metric.upper()) for metric in metrics}
 
     def _is_censored_metric(self, metric_name: str) -> bool:
-        \"\"\"Check if a metric requires censoring information.\"\"\"
+        """Check if a metric requires censoring information."""
         return metric_name.upper().startswith('CENSORED_')
 
     def _needs_predictions(self) -> bool:
