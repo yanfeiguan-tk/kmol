@@ -11,12 +11,22 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import importlib
+import logging
 from functools import reduce
 from operator import mul
 
 import torch
-import attn_core_inplace_cuda
+
+try:
+    import attn_core_inplace_cuda
+    ATTN_CORE_IS_AVAILABLE = True
+except ImportError:
+    ATTN_CORE_IS_AVAILABLE = False
+    logging.getLogger(__name__).warning(
+        "attn_core_inplace_cuda is not available. "
+        "The memory-efficient attention kernel will be disabled. "
+        "Use use_memory_efficient_kernel=False (the default) to suppress this."
+    )
 
 
 SUPPORTED_DTYPES = [torch.float32, torch.bfloat16]
@@ -25,6 +35,11 @@ SUPPORTED_DTYPES = [torch.float32, torch.bfloat16]
 class AttentionCoreFunction(torch.autograd.Function):
     @staticmethod
     def forward(ctx, q, k, v, bias_1=None, bias_2=None):
+        if not ATTN_CORE_IS_AVAILABLE:
+            raise RuntimeError(
+                "attn_core_inplace_cuda is not installed. "
+                "Please compile the OpenFold CUDA kernels or use use_memory_efficient_kernel=False."
+            )
         if(bias_1 is None and bias_2 is not None):
             raise ValueError("bias_1 must be specified before bias_2")
         if(q.dtype not in SUPPORTED_DTYPES):

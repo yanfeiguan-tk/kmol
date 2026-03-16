@@ -34,7 +34,7 @@ from scipy.stats import truncnorm
 
 from ..utils.checkpointing import get_checkpoint_fn
 from ..utils.chunk_utils import _chunk_slice
-from ..utils.kernel.attention_core import attention_core
+from ..utils.kernel.attention_core import attention_core, ATTN_CORE_IS_AVAILABLE
 from ..utils.precision_utils import is_fp16_enabled
 from ..utils.tensor_utils import (
     permute_final_dims,
@@ -480,7 +480,7 @@ class Attention(nn.Module):
         q, k, v = self._prep_qkv(q_x, kv_x)
 
         # [*, Q, H, C_hidden]
-        if is_fp16_enabled():
+        if is_fp16_enabled() or not ATTN_CORE_IS_AVAILABLE:
             use_memory_efficient_kernel = False
         
         if(use_memory_efficient_kernel):
