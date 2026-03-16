@@ -41,7 +41,12 @@ from kmol.vendor.openfold.utils.tensor_utils import (
     flatten_final_dims,
 )
 
-import attn_core_inplace_cuda
+try:
+    import attn_core_inplace_cuda
+    _ATTN_CORE_AVAILABLE = True
+except ImportError:
+    attn_core_inplace_cuda = None
+    _ATTN_CORE_AVAILABLE = False
 
 class AngleResnetBlock(nn.Module):
     def __init__(self, c_hidden):
@@ -356,7 +361,7 @@ class InvariantPointAttention(nn.Module):
         # [*, H, N_res, N_res]
         pt_att = permute_final_dims(pt_att, (2, 0, 1))
         
-        if(inplace_safe):
+        if(inplace_safe and _ATTN_CORE_AVAILABLE):
             a += pt_att
             del pt_att
             a += square_mask.unsqueeze(-3)
