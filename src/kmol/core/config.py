@@ -79,6 +79,7 @@ class Config(AbstractConfiguration):
     augmentations: List[Dict[str, Any]] = None
     static_augmentations: List[Dict[str, Any]] = None
     seed: int = 42
+    confidence_threshold: Optional[float] = None
 
     def should_parallelize(self) -> bool:
         return torch.cuda.is_available() and self.use_cuda and len(self.enabled_gpus) > 1
